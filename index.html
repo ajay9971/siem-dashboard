@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SecureWatch – SIEM Security Monitoring Dashboard</title>
+<style>
+:root{--bg:#eef1f5;--card:#fff;--tx:#14202e;--mut:#5c6b7d;--bd:#d9e0ea;--acc:#1f6feb;--crit:#d6293e;--high:#e8590c;--med:#b7791f;--ok:#1a8a4a;--mono:ui-monospace,Menlo,Consolas,monospace}
+@media(prefers-color-scheme:dark){:root{--bg:#0a1019;--card:#111a28;--tx:#e4ebf5;--mut:#8b9db4;--bd:#223049;--acc:#58a6ff;--crit:#ff5c6c;--high:#ff8a3d;--med:#e3b341;--ok:#3fb968}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+h1{font-size:18px;margin:0}h2{font-size:14px;margin:0 0 10px}
+.brand{display:flex;align-items:center;gap:10px}.brand small{color:var(--mut)}
+.live{width:10px;height:10px;border-radius:50%;background:var(--ok)}.paused .live{background:var(--mut)}
+.ctl{display:flex;gap:6px;flex-wrap:wrap}
+button,select,input{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}button:hover{border-color:var(--acc)}button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+main{padding:14px;display:grid;gap:14px;max-width:1280px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:14px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.kpi b{display:block;font-size:28px}.kpi span{color:var(--mut)}
+.g2{display:grid;grid-template-columns:2fr 1fr;gap:14px}.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+@media(max-width:760px){.g2{grid-template-columns:1fr}}
+canvas{width:100%;display:block}
+#legend{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:12px;color:var(--mut)}#legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd)}.row:last-child{border:0}
+.bar{height:6px;background:var(--bd);border-radius:3px;margin-top:4px}.bar i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.tools input{flex:1;min-width:140px}
+.sc{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:720px}
+th{text-align:left;color:var(--mut);font-weight:600;padding:6px;border-bottom:1px solid var(--bd)}td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
+td button{padding:3px 8px;margin:0 3px 3px 0;font-size:12px}
+.b{padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff}.b-Critical{background:var(--crit)}.b-High{background:var(--high)}.b-Medium{background:var(--med)}
+.st{font-size:12px}.st-New{color:var(--crit)}.st-Investigating{color:var(--med)}.st-Resolved{color:var(--ok)}
+#logs{font:12px/1.6 var(--mono);height:300px;overflow:auto;background:var(--bg);border-radius:6px;padding:8px}
+#logs div{white-space:pre-wrap;word-break:break-all}.l-warn{color:var(--med)}.l-error{color:var(--high)}.l-crit{color:var(--crit);font-weight:700}.l-info{color:var(--mut)}
+.mut{color:var(--mut)}.empty{color:var(--mut);padding:10px 0}
+footer{color:var(--mut);font-size:12px;padding:0 14px 20px;text-align:center}
+</style>
+</head>
+<body>
+<header id="top">
+  <div class="brand"><span class="live"></span><div><h1>SecureWatch SIEM</h1><small>Security monitoring dashboard</small></div></div>
+  <div class="ctl">
+    <select id="speed" aria-label="Refresh interval"><option value="3">Refresh 3s</option><option value="1">Refresh 1s</option><option value="10">Refresh 10s</option></select>
+    <button id="pause">Pause</button>
+    <button id="attack" class="p">Send test attack</button>
+    <button id="reset">Reset</button>
+  </div>
+</header>
+<main>
+  <section class="kpis">
+    <div class="card kpi"><b id="k1">0</b><span>Events processed</span></div>
+    <div class="card kpi"><b id="k2">0</b><span>Open alerts</span></div>
+    <div class="card kpi"><b id="k3" style="color:var(--crit)">0</b><span>Open critical alerts</span></div>
+    <div class="card kpi"><b id="k4">0</b><span>IPs blocked</span><div class="mut" id="k5"></div></div>
+  </section>
+  <section class="g2">
+    <div class="card"><h2>Events (blue) and alerts (red, own scale), last 2 minutes</h2><canvas id="line" height="180"></canvas></div>
+    <div class="card"><h2>Alerts by severity</h2><canvas id="donut" height="160"></canvas><div id="legend"></div></div>
+  </section>
+  <section class="g3">
+    <div class="card"><h2>Top attacker IPs</h2><div id="top"></div></div>
+    <div class="card"><h2>Attack types</h2><div id="types"></div></div>
+    <div class="card"><h2>Detection rules</h2><div id="rules"></div></div>
+  </section>
+  <section class="card">
+    <h2>Alerts</h2>
+    <div class="tools">
+      <select id="fs"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option></select>
+      <select id="ft"><option value="">All statuses</option><option>New</option><option>Investigating</option><option>Resolved</option></select>
+      <input id="fq" placeholder="Search IP or alert" aria-label="Search alerts">
+    </div>
+    <div class="sc"><table><thead><tr><th>Time</th><th>Severity</th><th>Alert</th><th>Source IP</th><th>Details</th><th>Status</th><th>Actions</th></tr></thead><tbody id="alerts"></tbody></table></div>
+  </section>
+  <section class="card">
+    <h2>Live log stream</h2>
+    <div class="tools">
+      <select id="ls"><option value="">All sources</option><option>FIREWALL</option><option>AUTH</option><option>WEB</option><option>ENDPOINT</option><option>SOAR</option></select>
+      <input id="lq" placeholder="Search logs" aria-label="Search logs">
+    </div>
+    <div id="logs"></div>
+  </section>
+</main>
+<footer>Live mode: logs arrive from your agents through /api/ingest and are analysed on the server.</footer>
+<script>
+const $=s=>document.querySelector(s),r=a=>a[Math.random()*a.length|0];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const RULES={BF:{n:"Brute force login",sev:"High",d:"5+ failed logins from one IP in 60s"},PS:{n:"Port scan",sev:"Medium",d:"8+ distinct ports probed in 30s"},SQLI:{n:"SQL injection",sev:"High",d:"SQL keywords in web request"},XSS:{n:"Cross-site scripting",sev:"Medium",d:"Script payload in web request"},MAL:{n:"Malware beacon",sev:"Critical",d:"Endpoint contacts C2 server"},PE:{n:"Privilege escalation",sev:"Critical",d:"Root login or privilege gain"}};
+const ATT=[],SEV=["Critical","High","Medium"],SEVC=["--crit","--high","--med"];
+let S={logs:[],alerts:[],total:0,blocked:new Set(),dropped:0,b:Array.from({length:24},()=>({e:0,a:0})),rc:{BF:0,PS:0,SQLI:0,XSS:0,MAL:0,PE:0}},timer,paused=false,sigA="",sigT="",KEY="";
+try{KEY=sessionStorage.getItem("k")||""}catch(e){}
+async function api(method,body){
+ const r=await fetch("/api/logs",{method,headers:{"x-dash-key":KEY,"content-type":"application/json"},body:body?JSON.stringify(body):undefined});
+ if(r.status===401){KEY=prompt("Enter dashboard password")||"";try{sessionStorage.setItem("k",KEY)}catch(e){}
+  if(!KEY){clearInterval(timer);$("footer").textContent="Password required. Reload the page and try again."}return null}
+ if(!r.ok){$("footer").textContent="API error "+r.status+": "+await r.text();return null}
+ return r.json()}
+async function poll(){let d;try{d=await api("GET")}catch(e){$("footer").textContent="Cannot reach /api/logs. Open the deployed Vercel link to see live data.";return}
+ if(!d)return;S={logs:d.logs,alerts:d.alerts,total:d.total,dropped:d.dropped,blocked:new Set(d.blocked),rc:d.rc,b:d.b};render()}
+function run(){clearInterval(timer);if(!paused)timer=setInterval(poll,+$("#speed").value*1000)}
+const tm=t=>new Date(t).toLocaleTimeString([],{hour12:false});
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function fit(c,h){const d=devicePixelRatio||1,w=c.clientWidth;c.width=w*d;c.height=h*d;const x=c.getContext("2d");x.scale(d,d);return[x,w]}
+function line(){const[x,w]=fit($("#line"),180),h=180,B=S.b,L=30,pt=(i,v,m)=>[L+(w-L-4)*i/(B.length-1),10+(h-30)*(1-v/m)];
+ const me=Math.max(5,...B.map(b=>b.e)),ma=Math.max(3,...B.map(b=>b.a));
+ x.font="10px sans-serif";for(let i=0;i<=4;i++){const y=10+(h-30)*i/4;x.strokeStyle=css("--bd");x.lineWidth=1;x.beginPath();x.moveTo(L,y);x.lineTo(w,y);x.stroke();x.fillStyle=css("--mut");x.fillText(Math.round(me*(1-i/4)),2,y+3)}
+ [["e",css("--acc"),me],["a",css("--crit"),ma]].forEach(([k,c,m])=>{x.strokeStyle=c;x.lineWidth=2;x.beginPath();B.forEach((b,i)=>{const[px,py]=pt(i,b[k],m);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()})}
+function donut(){const[x,w]=fit($("#donut"),160),cnt=SEV.map(s=>S.alerts.filter(a=>a.sev===s).length),t=cnt.reduce((a,b)=>a+b,0),cx=w/2,cy=80;let a0=-Math.PI/2;x.lineWidth=22;
+ if(!t){x.strokeStyle=css("--bd");x.beginPath();x.arc(cx,cy,58,0,7);x.stroke()}else cnt.forEach((n,i)=>{if(!n)return;const a1=a0+n/t*Math.PI*2;x.strokeStyle=css(SEVC[i]);x.beginPath();x.arc(cx,cy,58,a0,a1);x.stroke();a0=a1});
+ x.fillStyle=css("--tx");x.font="700 24px sans-serif";x.textAlign="center";x.fillText(t,cx,cy+8);
+ $("#legend").innerHTML=SEV.map((s,i)=>'<span><i style="background:var('+SEVC[i]+')"></i>'+s+" "+cnt[i]+"</span>").join("")}
+function render(){const open=S.alerts.filter(a=>a.status!=="Resolved");
+ $("#k1").textContent=S.total.toLocaleString();$("#k2").textContent=open.length;$("#k3").textContent=open.filter(a=>a.sev==="Critical").length;$("#k4").textContent=S.blocked.size;$("#k5").textContent=S.dropped+" events from blocked IPs";
+ line();donut();
+ const sigT2=S.alerts.length+"|"+S.blocked.size+"|"+Object.values(S.rc).join();
+ if(sigT2!==sigT){sigT=sigT2;const by={};S.alerts.forEach(a=>by[a.ip]=(by[a.ip]||0)+1);const top=Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,5),cc=Object.fromEntries(ATT);
+  $("#top").innerHTML=top.length?top.map(([ip,n])=>'<div class="row"><div><b>'+ip+'</b> <span class="mut">'+(cc[ip]||"")+"</span><br>"+n+' alerts</div>'+(S.blocked.has(ip)?'<span class="st-Resolved">Blocked</span>':'<button data-act="blk" data-ip="'+ip+'">Block</button>')+"</div>").join(""):'<div class="empty">No attackers detected yet.</div>';
+  const mx=Math.max(1,...Object.values(S.rc));$("#types").innerHTML=Object.keys(RULES).map(k=>'<div style="margin-bottom:8px"><div class="row" style="border:0;padding:0"><span>'+RULES[k].n+"</span><b>"+S.rc[k]+'</b></div><div class="bar"><i style="width:'+S.rc[k]/mx*100+'%"></i></div></div>').join("");
+  $("#rules").innerHTML=Object.keys(RULES).map(k=>'<div class="row"><div>'+RULES[k].n+'<br><span class="mut">'+RULES[k].d+'</span></div><span class="b b-'+RULES[k].sev+'">'+RULES[k].sev+"</span></div>").join("")}
+ renderAlerts();renderLogs()}
+function renderAlerts(){const fs=$("#fs").value,ft=$("#ft").value,q=$("#fq").value.toLowerCase();
+ const list=S.alerts.filter(a=>(!fs||a.sev===fs)&&(!ft||a.status===ft)&&(!q||(a.ip+a.name).toLowerCase().includes(q))).slice(0,40);
+ const sig=list.map(a=>a.id+a.status+a.count).join()+fs+ft+q;if(sig===sigA)return;sigA=sig;
+ $("#alerts").innerHTML=list.length?list.map(a=>"<tr><td>"+tm(a.time)+'</td><td><span class="b b-'+a.sev+'">'+a.sev+"</span></td><td>"+a.name+(a.count>1?" ×"+a.count:"")+"</td><td>"+a.ip+"</td><td>"+esc(a.detail)+'</td><td class="st st-'+a.status+'">'+a.status+"</td><td>"+(a.status==="New"?'<button data-act="inv" data-id="'+a.id+'">Investigate</button>':"")+(a.status!=="Resolved"?'<button data-act="res" data-id="'+a.id+'">Resolve</button><button data-act="blk" data-ip="'+a.ip+'">Block IP</button>':"")+"</td></tr>").join(""):'<tr><td colspan="7" class="empty">No alerts match. Run the agent or press Send test attack.</td></tr>'}
+function renderLogs(){const s=$("#ls").value,q=$("#lq").value.toLowerCase();
+ $("#logs").innerHTML=S.logs.filter(e=>(!s||e.src===s)&&(!q||(e.msg+e.ip).toLowerCase().includes(q))).slice(0,80).map(e=>'<div class="l-'+e.lvl+'">'+tm(e.t)+" ["+e.src+"] "+esc(e.msg)+"</div>").join("")}
+document.addEventListener("click",async e=>{const b=e.target.closest("[data-act]");if(!b)return;await api("POST",{action:b.dataset.act,id:b.dataset.id,ip:b.dataset.ip});sigA=sigT="";poll()});
+["fs","ft","fq"].forEach(i=>$("#"+i).addEventListener("input",()=>{sigA="";renderAlerts()}));
+["ls","lq"].forEach(i=>$("#"+i).addEventListener("input",renderLogs));
+$("#speed").addEventListener("change",run);
+$("#pause").onclick=()=>{paused=!paused;$("#pause").textContent=paused?"Resume":"Pause";document.body.classList.toggle("paused",paused);run()};
+$("#attack").onclick=async()=>{$("#attack").textContent="Sending...";await api("POST",{action:"demo"});$("#attack").textContent="Send test attack";poll()};
+$("#reset").onclick=async()=>{if(confirm("Delete all stored logs and alerts?")){await api("POST",{action:"reset"});sigA=sigT="";poll()}};
+addEventListener("resize",()=>{line();donut()});
+poll();run();
+</script>
+</body>
+</html>

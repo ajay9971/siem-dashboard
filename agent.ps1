@@ -92,18 +92,18 @@ while ($true) {
 
   $sec = Get-WinEvent -FilterHashtable @{ LogName = "Security"; Id = 4624, 4625, 4732, 1102; StartTime = $last } -ErrorAction SilentlyContinue | Sort-Object TimeCreated
   foreach ($e in $sec) {
-    $key = "S" + $e.RecordId
-    if ($seen[$key]) { continue }
-    $seen[$key] = 1
+    $rid = "S" + $e.RecordId
+    if ($seen[$rid]) { continue }
+    $seen[$rid] = 1
     $ev = Convert-SecurityEvent $e
     if ($ev) { $out += $ev }
   }
 
   $def = Get-WinEvent -FilterHashtable @{ LogName = "Microsoft-Windows-Windows Defender/Operational"; Id = 1116; StartTime = $last } -ErrorAction SilentlyContinue
   foreach ($e in $def) {
-    $key = "D" + $e.RecordId
-    if ($seen[$key]) { continue }
-    $seen[$key] = 1
+    $rid = "D" + $e.RecordId
+    if ($seen[$rid]) { continue }
+    $seen[$rid] = 1
     $name = "unknown threat"
     if ($e.Message -match "Name:\s*(.+)") { $name = $Matches[1].Trim() }
     $out += @{ source = "ENDPOINT"; level = "crit"; ip = "local"; message = "Windows Defender detected malware: $name" }
